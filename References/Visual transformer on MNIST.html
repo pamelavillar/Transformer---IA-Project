@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<!-- saved from url=(0077)https://itp.uni-frankfurt.de/~gros/StudentProjects/WS22_23_VisualTransformer/ -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Visual transformer on MNIST</title>
+    <link rel="stylesheet" href="./Visual transformer on MNIST_files/styles.css">
+    <!-- KaTeX -->
+    <script defer="" src="./Visual transformer on MNIST_files/katex.min.js" integrity="sha384-97gW6UIJxnlKemYavrqDHSX3SiygeOwIZhwyOKRfSaf0JWKRVj9hLASHgFTzT+0O" crossorigin="anonymous"></script>
+    <script defer="" src="./Visual transformer on MNIST_files/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous" onload="renderMathInElement(document.body, {delimiters: [{left: &#39;$$&#39;, right: &#39;$$&#39;, display: true}, {left: &#39;$&#39;, right: &#39;$&#39;, display: false}, {left: &#39;\\(&#39;, right: &#39;\\)&#39;, display: false}, {left: &#39;\\[&#39;, right: &#39;\\]&#39;, display: true}, {left: &#39;\\begin{equation}&#39;, right: &#39;\\end{equation}&#39;, display: true}, {left: &#39;\\begin{align}&#39;, right: &#39;\\end{align}&#39;, display: true}, {left: &#39;\\begin{alignat}&#39;, right: &#39;\\end{alignat}&#39;, display: true}, {left: &#39;\\begin{gather}&#39;, right: &#39;\\end{gather}&#39;, display: true}]});"></script>
+    <!-- Bootstrap -->
+    <script src="./Visual transformer on MNIST_files/bootstrap.bundle.min.js" integrity="sha384-OERcA2EqjJCMA+/3y+gxIOqMEjwtxJY7qPCqsdltbNJuaOe923+mo//f6V8Qbsw3" crossorigin="anonymous"></script>
+    <!-- D3 -->
+    <script src="./Visual transformer on MNIST_files/d3.v7.min.js"></script>
+    <!-- JavaScript 
+    <script defer src="index.js"></script>-->
+  </head>
+  <body>
+    <div class="container text-center pt-3">
+      <h1>
+        Visual transformer and the MNIST dataset
+      </h1>
+      <p>
+        <strong>A neural network based on the transformer architecture is trained on a dataset of handwritten digits.</strong>
+      </p>
+    </div>
+    <div class="container pt-3">
+      <h3 class="title">Introduction</h3>
+      <h5 class="title">Transformers</h5>
+      <p>
+	The Transformer is a deep neural network architecture that uses self-attention mechanisms to process sequential input data, such as language. It was introduced in 2017 in the paper "Attention is All You Need"[1]. The transformer architecture was commonly used for natural language processing (NLP) tasks, such as machine translation and language generation. In 2020, the paper "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale"[2] expanded the field of application for transformers to computer vision including image classification and object detection.
+	</p>
+	<p>
+	The paper claims for Vision Transformers (ViT) to achive results compared to convolutional networks while "requiring substantially fewer computational resources to train."
+      </p>
+      <h5 class="title">MNIST database</h5>
+      <p>
+	The Modified National Institute of Standards and Technology database (MNIST)[3] contains two sets of handwritten digits, a "training" set with 60.000 and a "test" set with 10.000 examples. It is part of a larger set - the NIST - and has been normalized and centered in 28x28 greyscale pixels with labels.
+      </p>
+	<img src="./Visual transformer on MNIST_files/sample28_patch28.png" alt="An example for a 0 out of the MNIST training set" width="150" height="150"><img src="./Visual transformer on MNIST_files/sample28_patch7c.png" alt="An example for a 3 out of the MNIST training set" width="150" height="150"><img src="./Visual transformer on MNIST_files/sample28_patch7b.png" alt="An example for a 4 out of the MNIST training set" width="150" height="150">
+    </div>
+    <div class="container pt-3">
+      <h3 class="title">Creating the model</h3>
+	<p>
+	The following program is based on the code example "Image classification with Vision Transformer"[4] and has been modified to work with the MNIST dataset. An overview of the (relative) use of computing resources for training and the accuracy depending on the hypermarameters is provided in a later chapter.
+	</p>
+<h5 class="title">Loading the datasets</h5>
+<pre><span class="code">
+<span class="high">import</span> numpy <span class="high">as</span> np
+<span class="high">import</span> tensorflow <span class="high">as</span> tf
+<span class="high">from</span> tensorflow <span class="high">import</span> keras
+<span class="high">from</span> tensorflow.keras <span class="high">import</span> layers
+<span class="high">import</span> tensorflow_addons <span class="high">as</span> tfa
+
+<span class="comment"># Define a function to change the MNIST label dimension</span>
+<span class="high">def</span> <span class="func">change_to_right</span>(wrong_labels):
+    right_labels<span class="eq">=</span>[]
+    <span class="high">for</span> x <span class="high">in</span> wrong_labels:
+        <span class="high">for</span> i <span class="high">in</span> range(0,len(wrong_labels[0])):
+            <span class="high">if</span> x[i]<span class="eq">==</span>1:
+                right_labels.append(i)
+    <span class="high">return</span> right_labels
+
+<span class="comment"># Model / data parameters</span>
+num_classes <span class="eq">=</span> 10
+input_shape <span class="eq">=</span> (28, 28, 1)
+
+<span class="comment"># Load the data and split it between train and test sets</span>
+(x_train, y_train), (x_test, y_test) <span class="eq">=</span> keras.datasets.mnist.load_data()
+
+<span class="comment"># Scale images to the [0, 1] range</span>
+x_train <span class="eq">=</span> x_train.astype("float32") / 255
+x_test <span class="eq">=</span> x_test.astype("float32") / 255
+
+<span class="comment"># Make sure images have shape (28, 28, 1)</span>
+x_train <span class="eq">=</span> np.expand_dims(x_train, -1)
+x_test <span class="eq">=</span> np.expand_dims(x_test, -1)
+
+<span class="comment"># Convert class vectors to right format</span>
+y_train <span class="eq">=</span> tf.convert_to_tensor(np.array(change_to_right(keras.utils.to_categorical(y_train, num_classes))))
+y_test <span class="eq">=</span> tf.convert_to_tensor(np.array(change_to_right(keras.utils.to_categorical(y_test, num_classes))))
+</span></pre>
+<h5 class="title">Configuring the hyperparameters</h5>
+<pre><span class="code">
+learning_rate <span class="eq">=</span> 0.001
+weight_decay <span class="eq">=</span> 0.0001
+batch_size <span class="eq">=</span> 2000
+num_epochs <span class="eq">=</span> 100
+</span></pre>
+<p>
+The learning rate is a hyperparameter that controls the step size at which the optimizer makes updates to the model's parameters during training. It determines how fast or slow the optimizer (here: Adam) learns from the data: A small learning rate means that the optimizer makes small updates to the model's parameters with each iteration, which can lead to slow, but stable convergence. A high learning rate results in larger updates and faster convergence, but can cause the optimizer to oscillate or miss the optimal solution. <!--TODO: querverweis adaptive learning rates. -->
+</p>
+<p>
+Weight decay is a regularization technique used to prevent overfitting in neural networks by adding a penalty term to the loss function that encourages the model to have smaller weights. This results in simpler and more generalizable models. It will be used in combination with data augmentation (see next sub-chapter) to prevent overfitting, resulting in a more generalizable model.
+</p>
+<p>
+The batch size is the number of samples used in each iteration of the training process. A larger batch size can make the training process faster and more stable, but will also require more RAM. After using the full RAM, the significantly slower Swap partition will be used, negating the faster processing speed. When a significant amount of memory is in swap, the computer might freeze temporarily. It is advisable to start with a low num_epochs (e.g. 1), the number of learning cycles with full dataset, to keep the downtime to a minimum.
+</p>
+<pre><span class="code">
+image_size <span class="eq">=</span> 28  <span class="comment"># We'll resize input images to this size</span>
+patch_size <span class="eq">=</span> 14  <span class="comment"># Size of the patches to be extract from the input images</span>
+num_patches <span class="eq">=</span> (image_size // patch_size) ** 2
+projection_dim <span class="eq">=</span> 96
+num_heads <span class="eq">=</span> 4
+transformer_units <span class="eq">=</span> [
+    projection_dim * 2,
+    projection_dim,
+]  <span class="comment"># Size of the transformer layers</span>
+transformer_layers <span class="eq">=</span> 16
+mlp_head_units <span class="eq">=</span> [2048, 1024]  <span class="comment"># Size of the dense layers of the final classifier</span>
+</span></pre>
+<p>
+The image size is the (desired) width and height of the image in pixel. Setting this to another value than the original image size and using the corresponding function below will result in a resized image, which allows the usage of a larger set of patch sizes. The patch size is the size of the sub-matrices the image will be divided into, to be given to the transformer. A larger patch size allows the model to see more of the image at once, which can provide more contextual information, with an increase in computational resources needed. Smaller patches allow the model to recognize local features and be less dependent on the background. With the dataset used, larger patch sized should get better results, as the digits lack local features and backgrounds.
+</p>
+<img src="./Visual transformer on MNIST_files/sample32_patch6.png" width="150" height="150"> This 4 out of the MNIST training set has been resized to 32x32 pixel and divided into patches of 6x6.<br>
+<img src="./Visual transformer on MNIST_files/sample28_patch14.png" width="150" height="150"> This 6 out of the MNIST training set with a size of 28x28 pixel has been divided into patches of 14x14.
+<p>
+The projection dimension controls the dimensionality of the internal representations used. In particular, it determines the size of the vectors that represent the image patches and the features extracted from them. Increasing the projection dimension and thus using lagrer vectors leads to increased processing time and RAM requirements, but allows the model to represent more complex features. The same applies for the number of transformer layers, as the ouput of each layer is fed into the next one to allow the model to understand more complex relations.
+</p>
+<h5 class="title">Data augmentation</h5>
+<pre><span class="code">
+data_augmentation <span class="eq">=</span> keras.Sequential(
+    [
+        layers.Normalization(),
+        <span class="comment">#layers.Resizing(image_size, image_size),</span>
+        <span class="comment">#layers.RandomFlip("horizontal"),</span>
+        layers.RandomRotation(factor<span class="eq">=</span>0.02),
+        layers.RandomZoom(
+            height_factor<span class="eq">=</span>0.2, width_factor<span class="eq">=</span>0.2
+        ),
+    ],
+    name<span class="eq">=</span>"data_augmentation",
+)
+<span class="comment"># Compute the mean and the variance of the training data for normalization.</span>
+data_augmentation.layers[0].adapt(x_train)
+</span></pre>
+<p>
+Data augmentation is a technique used in machine learning to increase the size of the training dataset by applying various transformations to the original data. The goal of data augmentation is to increase the variability of the training dataset to train more accurate and robust models with the same amount of labeled data. There are various data augmentation techniques: 
+</p>
+      <ul>
+	<li> Flipping: Horizontally or vertically flipping the image. This was not used, as it might decrease accuracy in distinguishing 6 from 9.
+	</li><li> Rotation: Rotating the image by a certain degree. This might simulate writing at different angles or switching hands and is therfore used.
+	</li><li> Scaling: Zooming by a certain factor. This was used.
+	</li><li> Translation: Shifting the image by a certain amount. This was not used.
+	</li><li> Color manipulation: Changing the brightness, contrast, or saturation of the image. For normalized scans, this should be irrelevant.
+        </li><li> Noise injection: Adding random noise to the image. This was not used; however there exists a different dataset (Corrupted MNIST), which might benefit from it.</li>
+      </ul>
+<!-- TODO Überschrift finden -->
+<pre><span class="code">
+<span class="high">def</span> <span class="func">mlp</span>(x, hidden_units, dropout_rate):
+    <span class="high">for</span> units <span class="high">in</span> hidden_units:
+        x = layers.Dense(units, activation=tf.nn.gelu)(x)
+        x = layers.Dropout(dropout_rate)(x)
+    <span class="high">return</span> x
+
+<span class="high">class</span> <span class="func">Patches</span>(layers.Layer):
+    <span class="high">def</span> <span class="func">__init__</span>(self, patch_size):
+        super().__init__()
+        self.patch_size = patch_size
+
+    <span class="high">def</span> <span class="func">call</span>(self, images):
+        batch_size = tf.shape(images)[0]
+        patches = tf.image.extract_patches(
+            images=images,
+            sizes=[1, self.patch_size, self.patch_size, 1],
+            strides=[1, self.patch_size, self.patch_size, 1],
+            rates=[1, 1, 1, 1],
+            padding="VALID",
+        )
+        patch_dims = patches.shape[-1]
+        patches = tf.reshape(patches, [batch_size, -1, patch_dims])
+        <span class="high">return</span> patches
+
+<span class="high">class</span> <span class="func">PatchEncoder</span>(layers.Layer):
+    <span class="high">def</span> <span class="func">__init__</span>(self, num_patches, projection_dim):
+        super().__init__()
+        self.num_patches = num_patches
+        self.projection = layers.Dense(units=projection_dim)
+        self.position_embedding = layers.Embedding(
+            input_dim=num_patches, output_dim=projection_dim
+        )
+
+    <span class="high">def</span> <span class="func">call</span>(self, patch):
+        positions = tf.range(start=0, limit=self.num_patches, delta=1)
+        encoded = self.projection(patch) + self.position_embedding(positions)
+        <span class="high">return</span> encoded
+
+<span class="high">def</span> <span class="func">create_vit_classifier</span>():
+    inputs = layers.Input(shape=input_shape)
+    <span class="comment"># Augment data.</span>
+    augmented = data_augmentation(inputs)
+    <span class="comment"># Create patches.</span>
+    patches = Patches(patch_size)(augmented)
+    <span class="comment"># Encode patches.</span>
+    encoded_patches = PatchEncoder(num_patches, projection_dim)(patches)
+
+    <span class="comment"># Create multiple layers of the Transformer block.</span>
+    <span class="high">for _ in</span> range(transformer_layers):
+        <span class="comment"># Layer normalization 1.</span>
+        x1 = layers.LayerNormalization(epsilon=1e-6)(encoded_patches)
+        <span class="comment"># Create a multi-head attention layer.</span>
+        attention_output = layers.MultiHeadAttention(
+            num_heads=num_heads, key_dim=projection_dim, dropout=0.1
+        )(x1, x1)
+        <span class="comment"># Skip connection 1.</span>
+        x2 = layers.Add()([attention_output, encoded_patches])
+        <span class="comment"># Layer normalization 2.</span>
+        x3 = layers.LayerNormalization(epsilon=1e-6)(x2)
+        <span class="comment"># MLP.</span>
+        x3 = mlp(x3, hidden_units=transformer_units, dropout_rate=0.1)
+        <span class="comment"># Skip connection 2.</span>
+        encoded_patches = layers.Add()([x3, x2])
+
+    <span class="comment"># Create a [batch_size, projection_dim] tensor.</span>
+    representation = layers.LayerNormalization(epsilon=1e-6)(encoded_patches)
+    representation = layers.Flatten()(representation)
+    representation = layers.Dropout(0.5)(representation)
+    <span class="comment"># Add MLP.</span>
+    features = mlp(representation, hidden_units=mlp_head_units, dropout_rate=0.5)
+    <span class="comment"># Classify outputs.</span>
+    logits = layers.Dense(num_classes)(features)
+    <span class="comment"># Create the Keras model.</span>
+    model = keras.Model(inputs=inputs, outputs=logits)
+    <span class="high">return</span> model
+</span></pre>
+
+<h3 class="title">Running the experiment</h3>
+<p>
+The next step is to train and test the model. All results have to be taken with a grain of salt: Background tasks have a huge impact if the computing power is low and generally, more epochs would have been needed to converge to the possible accuracy. Some of the earlier runs have had horitonal flips.
+</p>
+<pre><span class="code">
+<span class="high">def</span> <span class="func">run_experiment</span>(model):
+    optimizer = tfa.optimizers.AdamW(
+        learning_rate=learning_rate, weight_decay=weight_decay
+    )
+
+    model.compile(
+        optimizer=optimizer,
+        loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=[
+            keras.metrics.SparseCategoricalAccuracy(name="accuracy"),
+            keras.metrics.SparseTopKCategoricalAccuracy(5, name="top-5-accuracy"),
+        ],
+    )
+
+    checkpoint_filepath = "/tmp/checkpoint"
+    checkpoint_callback = keras.callbacks.ModelCheckpoint(
+        checkpoint_filepath,
+        monitor="val_accuracy",
+        save_best_only=True,
+        save_weights_only=True,
+    )
+
+    history = model.fit(
+        x=x_train,
+        y=y_train,
+        batch_size=batch_size,
+        epochs=num_epochs,
+        validation_split=0.1,
+        callbacks=[checkpoint_callback],
+    )
+
+    model.load_weights(checkpoint_filepath)
+    _, accuracy, top_5_accuracy = model.evaluate(x_test, y_test)
+    print(f"Test accuracy: {round(accuracy * 100, 2)}%")
+    print(f"Test top 5 accuracy: {round(top_5_accuracy * 100, 2)}%")
+
+    <span class="high">return</span> history
+
+
+vit_classifier = create_vit_classifier()
+history = run_experiment(vit_classifier)
+</span></pre>
+<p>
+At first, the image and patch sizes have been varied.
+batch_size = 128; layers = 8; epochs = 1; projection_dim = 48.
+</p>
+<!--TODO # of patches column-->
+<table>
+  <thead>
+    <tr>
+      <th>Image size</th>
+      <th>Patch size</th>
+      <th>Accuracy [%]</th>
+      <th>Training time [s]</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>48</td>
+      <td>6</td>
+      <td>94,91</td>
+      <td>412</td>
+    </tr>
+    <tr>
+      <td>56</td>
+      <td>7</td>
+      <td>93,96</td>
+      <td>414</td>
+    </tr>
+    <tr>
+      <td>32</td>
+      <td>6</td>
+      <td class="high">95,59</td>
+      <td>165</td>
+    </tr>
+    <tr>
+      <td>64</td>
+      <td>12</td>
+      <td>94,93</td>
+      <td>166</td>
+    </tr>
+    <tr>
+      <td>32</td>
+      <td>8</td>
+      <td>94,62</td>
+      <td>97</td>
+    </tr>
+    <tr>
+      <td>28</td>
+      <td>7</td>
+      <td>93,72</td>
+      <td>96</td>
+    </tr>
+    <tr>
+      <td>21</td>
+      <td>7</td>
+      <td>93,43</td>
+      <td>72</td>
+    </tr>
+    <tr>
+      <td>28</td>
+      <td>4</td>
+      <td>94,68</td>
+      <td>313</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+Generally, more patches seem to be more computationally demanding. The best accuracy was achieved with a combination of parameters that leads to edges being cut off.
+</p>
+<p>
+For fixed image (28x28) and patch(7x7) size, the projection dimension is varied:
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Projection dimension</th>
+      <th>Accuracy [%]</th>
+      <th>Training time [s]</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>64</td>
+      <td>93,78</td>
+      <td>122</td>
+    </tr>
+    <tr>
+      <td>48</td>
+      <td>93,59</td>
+      <td>95</td>
+    </tr>
+    <tr>
+      <td>32</td>
+      <td>93,38</td>
+      <td>82</td>
+    </tr>
+    <tr>
+      <td>16</td>
+      <td>91,33</td>
+      <td>63</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+Higher projection dimension gives more accuracy, but requires more processing time.
+</p>
+<p> 
+Other values for the hyperparameteres have been tested; The best accuracy (98,94%) in the serie was achieved in under 2 hours with:<br>
+Epochs: 100<br>
+Batch size: 2000<br>
+Layers: 16<br>
+Image size: 28 (not resized)<br>
+Patch size: 14 (4 Patches)<br>
+Projection dimension: 96
+</p>
+<p>
+This result has both worse accuracy and a longer compute time than the basic CNN example from keras.io (&gt;99%, 2,5min).
+</p>
+<!--
+<pre><span class="code">
+<span class="func">function</span>(){
+a<span class="eq">=</span>b
+<span class="comment">#Comments in code here</span>
+<span class="high">Other</span> code here
+</span></pre>
+
+      <p>
+        Some theory about your topic. This may include inline math, such as
+        $f(x) = x^2$, or math environments, such as
+        \[
+          \int f(x) \: \mathrm{d}x = \frac{1}{3} x^3 + C.
+        \]
+      </p>
+-->
+      <div id="d3-div" class="container text-center"></div>
+    </div>
+    <div class="container pt-3">
+      <h3 class="title">Resources</h3>
+      <ul>
+	<li>[1] <a href="https://arxiv.org/abs/1706.03762"> "Attention Is All You Need", Ashish Vaswani, 2017-06-12 </a>
+	</li><li>[2] <a href="https://arxiv.org/abs/2010.11929"> "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale", Alexey Dosovitskiy, 2020-08-22 </a>
+	</li><li>[3] <a href="http://yann.lecun.com/exdb/mnist/"> "THE MNIST DATABASE of handwritten digits", Yann LeCun, Corinna Cortes, Christopher J.C. Burges</a>
+        </li><li>[4] <a href="https://keras.io/examples/vision/image_classification_with_vision_transformer/"> "Image classification with Vision Transformer", Khalid Salama, 2021-01-18</a></li>
+      </ul>
+
+    </div>
+  
+
+</body></html>
